@@ -18,9 +18,7 @@ export default function Home() {
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [loadingResumes, setLoadingResumes] = useState(false);
 
-  useEffect(() => {
-    if(!auth.isAuthenticated) navigate('/auth?next=/');
-  }, [auth.isAuthenticated])
+  // Keep Home accessible; show CTA instead of redirect when logged out
 
   useEffect(() => {
     const loadResumes = async () => {
@@ -56,6 +54,12 @@ export default function Home() {
             <h2>No resumes found. Upload your first resume to get feedback.</h2>
         ): (
           <h2>Review your submissions and check AI-powered feedback.</h2>
+        )}
+        {!auth.isAuthenticated && (
+          <div className="mt-6 flex gap-4 justify-center">
+            <Link to="/login?next=/" className="primary-button w-fit text-lg font-semibold">Log In</Link>
+            <Link to="/signup?next=/" className="primary-button w-fit text-lg font-semibold">Sign Up</Link>
+          </div>
         )}
       </div>
       {loadingResumes && (

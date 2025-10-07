@@ -16,7 +16,7 @@ const Upload = () => {
 
     useEffect(() => {
         if (!isLoading && !auth.isAuthenticated) {
-            navigate('/auth?next=/upload');
+            navigate('/login?next=/upload');
         }
     }, [isLoading, auth.isAuthenticated, navigate]);
 
@@ -47,7 +47,7 @@ const Upload = () => {
         if (!userId) {
             setStatusText('Error: Not authenticated');
             setIsProcessing(false);
-            navigate('/auth?next=/upload');
+            navigate('/login?next=/upload');
             return;
         }
         const uuid = generateUUID();
