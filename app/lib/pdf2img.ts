@@ -18,15 +18,20 @@ async function loadPdfJs(): Promise<any> {
         throw new Error("PDF conversion is only available in the browser");
     }
 
-    // @ts-expect-error - pdfjs-dist/build/pdf.mjs is ESM without types here
-    loadPromise = import("pdfjs-dist/build/pdf.mjs").then((lib) => {
+    // Load library and resolve a bundler-served worker URL
+    loadPromise = Promise.all([
+        // @ts-expect-error - pdfjs-dist ESM has no types here
+        import("pdfjs-dist/build/pdf.mjs"),
+        import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
+    ]).then(([lib, workerMod]) => {
+        const workerUrl = (workerMod as any)?.default ?? (workerMod as any);
         // Prefer explicit workerPort to avoid path/type issues across environments
         try {
-            const worker = new Worker("/pdf.worker.min.mjs", { type: "module" });
+            const worker = new Worker(workerUrl, { type: "module" });
             lib.GlobalWorkerOptions.workerPort = worker as unknown as Worker;
         } catch (_) {
             // Fallback to workerSrc if constructing a module worker fails
-            lib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+            lib.GlobalWorkerOptions.workerSrc = workerUrl;
         }
         pdfjsLib = lib;
         isLoading = false;
@@ -46,7 +51,12 @@ export async function convertPdfToImage(
         const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
         const page = await pdf.getPage(1);
 
-        const viewport = page.getViewport({ scale: 4 });
+        // Choose a scale that keeps the longest side under MAX_DIMENSION
+        const MAX_DIMENSION = 2048;
+        const baseViewport = page.getViewport({ scale: 1 });
+        const maxSide = Math.max(baseViewport.width, baseViewport.height);
+        const autoScale = Math.min(4, MAX_DIMENSION / maxSide);
+        const viewport = page.getViewport({ scale: autoScale > 0 ? autoScale : 1 });
         const canvas = document.createElement("canvas");
         const context = canvas.getContext("2d");
 
@@ -67,32 +77,46 @@ export async function convertPdfToImage(
         }
 
         await page.render({ canvasContext: context, viewport }).promise;
+        try {
+            // Hint PDF.js to free resources sooner
+            // @ts-ignore
+            page.cleanup && page.cleanup();
+            // @ts-ignore
+            pdf.cleanup && pdf.cleanup();
+        } catch {}
 
         return new Promise((resolve) => {
-            canvas.toBlob(
-                (blob) => {
-                    if (blob) {
-                        // Create a File from the blob with the same name as the pdf
-                        const originalName = file.name.replace(/\.pdf$/i, "");
-                        const imageFile = new File([blob], `${originalName}.png`, {
-                            type: "image/png",
-                        });
+            const done = (blob: Blob | null) => {
+                if (blob) {
+                    const originalName = file.name.replace(/\.pdf$/i, "");
+                    const imageFile = new File([blob], `${originalName}.png`, {
+                        type: "image/png",
+                    });
+                    resolve({ imageUrl: URL.createObjectURL(blob), file: imageFile });
+                } else {
+                    resolve({
+                        imageUrl: "",
+                        file: null,
+                        error: "Failed to create image blob",
+                    });
+                }
+            };
 
-                        resolve({
-                            imageUrl: URL.createObjectURL(blob),
-                            file: imageFile,
-                        });
-                    } else {
-                        resolve({
-                            imageUrl: "",
-                            file: null,
-                            error: "Failed to create image blob",
-                        });
-                    }
-                },
-                "image/png",
-                1.0
-            ); // Set quality to maximum (1.0)
+            try {
+                canvas.toBlob((blob) => done(blob), "image/png", 1.0);
+            } catch (_) {
+                try {
+                    const dataUrl = canvas.toDataURL("image/png", 1.0);
+                    // Convert dataURL to Blob
+                    const byteString = atob(dataUrl.split(",")[1]);
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+                    for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+                    done(new Blob([ab], { type: "image/png" }));
+                } catch {
+                    done(null);
+                }
+            }
         });
     } catch (err) {
         return {
