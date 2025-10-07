@@ -26,7 +26,14 @@ export default function Home() {
     const loadResumes = async () => {
       setLoadingResumes(true);
 
-      const resumes = (await kv.list('resume:*', true)) as KVItem[];
+      const userId = auth.user?.uuid;
+      if (!userId) {
+        setResumes([]);
+        setLoadingResumes(false);
+        return;
+      }
+
+      const resumes = (await kv.list(`resume:${userId}:*`, true)) as KVItem[];
 
       const parsedResumes = resumes?.map((resume) => (
           JSON.parse(resume.value) as Resume
@@ -37,7 +44,7 @@ export default function Home() {
     }
 
     loadResumes()
-  }, []);
+  }, [auth.user?.uuid]);
 
   return <main className="bg-[url('/images/bg-main.svg')] bg-cover">
     <Navbar />

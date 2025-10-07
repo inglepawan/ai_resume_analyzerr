@@ -46,6 +46,7 @@ interface PuterStore {
     isLoading: boolean;
     error: string | null;
     puterReady: boolean;
+    initStarted: boolean;
     auth: {
         user: PuterUser | null;
         isAuthenticated: boolean;
@@ -242,6 +243,10 @@ export const usePuterStore = create<PuterStore>((set, get) => {
     };
 
     const init = (): void => {
+        if (get().initStarted) {
+            return;
+        }
+        set({ initStarted: true });
         const puter = getPuter();
         if (puter) {
             set({ puterReady: true });
@@ -415,6 +420,7 @@ export const usePuterStore = create<PuterStore>((set, get) => {
         isLoading: true,
         error: null,
         puterReady: false,
+        initStarted: false,
         auth: {
             user: null,
             isAuthenticated: false,
