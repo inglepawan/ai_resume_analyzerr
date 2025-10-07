@@ -13,10 +13,21 @@ async function loadPdfJs(): Promise<any> {
     if (loadPromise) return loadPromise;
 
     isLoading = true;
-    // @ts-expect-error - pdfjs-dist/build/pdf.mjs is not a module
+    // Only run in browser
+    if (typeof window === "undefined") {
+        throw new Error("PDF conversion is only available in the browser");
+    }
+
+    // @ts-expect-error - pdfjs-dist/build/pdf.mjs is ESM without types here
     loadPromise = import("pdfjs-dist/build/pdf.mjs").then((lib) => {
-        // Set the worker source to use local file
-        lib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+        // Prefer explicit workerPort to avoid path/type issues across environments
+        try {
+            const worker = new Worker("/pdf.worker.min.mjs", { type: "module" });
+            lib.GlobalWorkerOptions.workerPort = worker as unknown as Worker;
+        } catch (_) {
+            // Fallback to workerSrc if constructing a module worker fails
+            lib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+        }
         pdfjsLib = lib;
         isLoading = false;
         return lib;
@@ -47,7 +58,15 @@ export async function convertPdfToImage(
             context.imageSmoothingQuality = "high";
         }
 
-        await page.render({ canvasContext: context!, viewport }).promise;
+        if (!context) {
+            return {
+                imageUrl: "",
+                file: null,
+                error: "Canvas 2D context unavailable",
+            };
+        }
+
+        await page.render({ canvasContext: context, viewport }).promise;
 
         return new Promise((resolve) => {
             canvas.toBlob(
