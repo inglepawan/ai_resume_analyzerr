@@ -23,10 +23,31 @@ const WipeApp = () => {
     }, [isLoading]);
 
     const handleDelete = async () => {
-        files.forEach(async (file) => {
-            await fs.delete(file.path);
-        });
-        await kv.flush();
+        // Ensure sequential deletion to avoid overloading the FS API
+        for (const file of files) {
+            try {
+                // Skip directories for safety
+                if (!file.is_dir) {
+                    await fs.delete(file.path);
+                }
+            } catch (e) {
+                console.error('Failed to delete', file.path, e);
+            }
+        }
+        // Danger: kv.flush wipes all keys across users. Replace with per-user prefix delete.
+        const userId = auth.user?.uuid;
+        if (userId) {
+            const keys = (await kv.list(`resume:${userId}:*`)) as string[];
+            if (Array.isArray(keys)) {
+                for (const key of keys) {
+                    try {
+                        await kv.delete(key);
+                    } catch (e) {
+                        console.error('Failed to delete kv key', key, e);
+                    }
+                }
+            }
+        }
         loadFiles();
     };
 

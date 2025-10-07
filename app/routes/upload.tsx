@@ -1,4 +1,4 @@
-import {type FormEvent, useState} from 'react'
+import {type FormEvent, useEffect, useState} from 'react'
 import Navbar from "~/components/Navbar";
 import FileUploader from "~/components/FileUploader";
 import {usePuterStore} from "~/lib/puter";
@@ -13,6 +13,12 @@ const Upload = () => {
     const [isProcessing, setIsProcessing] = useState(false);
     const [statusText, setStatusText] = useState('');
     const [file, setFile] = useState<File | null>(null);
+
+    useEffect(() => {
+        if (!isLoading && !auth.isAuthenticated) {
+            navigate('/auth?next=/upload');
+        }
+    }, [isLoading, auth.isAuthenticated, navigate]);
 
     const handleFileSelect = (file: File | null) => {
         setFile(file)
@@ -34,6 +40,13 @@ const Upload = () => {
         if(!uploadedImage) return setStatusText('Error: Failed to upload image');
 
         setStatusText('Preparing data...');
+        const userId = auth.user?.uuid;
+        if (!userId) {
+            setStatusText('Error: Not authenticated');
+            setIsProcessing(false);
+            navigate('/auth?next=/upload');
+            return;
+        }
         const uuid = generateUUID();
         const data = {
             id: uuid,
@@ -42,7 +55,7 @@ const Upload = () => {
             companyName, jobTitle, jobDescription,
             feedback: '',
         }
-        await kv.set(`resume:${uuid}`, JSON.stringify(data));
+        await kv.set(`resume:${userId}:${uuid}`, JSON.stringify(data));
 
         setStatusText('Analyzing...');
 
@@ -57,7 +70,7 @@ const Upload = () => {
             : feedback.message.content[0].text;
 
         data.feedback = JSON.parse(feedbackText);
-        await kv.set(`resume:${uuid}`, JSON.stringify(data));
+        await kv.set(`resume:${userId}:${uuid}`, JSON.stringify(data));
         setStatusText('Analysis complete, redirecting...');
         console.log(data);
         navigate(`/resume/${uuid}`);

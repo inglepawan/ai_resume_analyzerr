@@ -19,12 +19,13 @@ const Resume = () => {
     const navigate = useNavigate();
 
     useEffect(() => {
-        if(!isLoading && !auth.isAuthenticated) navigate(`/auth?next=/resume/${id}`);
-    }, [isLoading])
+        if (!isLoading && !auth.isAuthenticated) navigate(`/auth?next=/resume/${id}`);
+    }, [isLoading, auth.isAuthenticated, id, navigate])
 
     useEffect(() => {
         const loadResume = async () => {
-            const resume = await kv.get(`resume:${id}`);
+            if (!auth.user?.uuid) return;
+            const resume = await kv.get(`resume:${auth.user.uuid}:${id}`);
 
             if(!resume) return;
 
@@ -47,7 +48,7 @@ const Resume = () => {
         }
 
         loadResume();
-    }, [id]);
+    }, [id, auth.user?.uuid]);
 
     return (
         <main className="!pt-0">
